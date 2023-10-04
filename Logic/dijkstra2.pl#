@@ -1,0 +1,96 @@
+:- module(dijkstra_av, [dijkstra_av/3, finalAnswer/2]).
+:-consult('./Data/db.pl').
+
+
+dijkstra_av(GRAPH, START, SOLUTION) :-
+    setof(X, Y^D^(member(d(X,Y,D), GRAPH) ; member(d(Y,X,D), GRAPH)), XS),
+    length(XS, L),
+    length(VS, L),
+    aggregate_all(sum(D), member(d(_, _, D), GRAPH), Infinity),
+    catch((dijkstraMain(GRAPH, Infinity, XS, VS, START, SOLUTION),
+           throw(sol(SOLUTION))
+          ), sol(SOLUTION), true).
+
+dijkstraMain(GRAPH, Infinity, XS, VS, START, SOLUTION) :-
+    pairs_keys_values(PS, XS, VS),
+    maplist(initAdjs(PS), GRAPH),
+    maplist(initDist(Infinity), PS),
+    memberchk(START-SV, PS),
+    put_attr(SV, dist, 0),
+    mainLoop(VS),
+    maplist(solution(START), VS, SOLUTION).
+
+solution(START, V, (N, D, [START|P])) :-
+    get_attr(V, name, N),
+    get_attr(V, dist, D),
+    buildPath(V, [], P).
+
+buildPath(V, X, P) :-
+    get_attr(V, name, N),
+    (   get_attr(V, previous, Q)
+    ->  buildPath(Q, [N|X], P)
+    ;   P = X
+    ).
+%
+
+initDist(Infinity, N-V) :-
+    put_attr(V, name, N),
+    put_attr(V, dist, Infinity).
+
+initAdjs(PS, d(X, Y, D)) :-
+    memberchk(X-XV, PS),
+    memberchk(Y-YV, PS),
+    adjAdd(XV, YV, D).
+
+adjAdd(X, Y, D) :-
+    (   get_attr(X, adjs, L)
+    ->  put_attr(X, adjs, [Y-D|L])
+    ;   put_attr(X, adjs, [Y-D])
+    ).
+
+mainLoop([]).
+mainLoop([Q|QS]) :-
+    smallestDistance(QS, Q, U, QN),
+    put_attr(U, assigned, true),
+    get_attr(U, adjs, AS),
+    updateNeighbours(AS, U),
+    mainLoop(QN).
+
+smallestDistance([A|QS], C, M, [T|QN]) :-
+    get_attr(A, dist, AV),
+    get_attr(C, dist, CV),
+    (   AV < CV
+    ->  (N,T) = (A,C)
+    ;   (N,T) = (C,A)
+    ),
+    !, smallestDistance(QS, N, M, QN).
+smallestDistance([], U, U, []).
+
+updateNeighbours([V-DUV|VS], U) :-
+    (   get_attr(V, assigned, true)
+    ->  true
+    ;   get_attr(U, dist, DU),
+        get_attr(V, dist, DV),
+        ALT is DU + DUV,
+        (   ALT < DV
+        ->  put_attr(V, dist, ALT),
+        put_attr(V, previous, U)
+        ;   true
+        )
+    ),
+    updateNeighbours(VS, U).
+updateNeighbours([], _).
+
+allDistances(GRAPH):- findall(FACT,(d(X,Y,Z),FACT = d(X,Y,Z)), GRAPH).
+
+routeAux(X, [X|_]).
+routeAux(X, [_|Y]):- routeAux(X, Y).
+
+route(START,END,TIME,ROUTE):-
+    allDistances(GRAPH),
+   dijkstra_av(GRAPH,START,X),
+   routeAux((END,TIME,ROUTE), X).
+
+finalAnswer(START,END):-
+    route(START,END,TIME,ROUTE),
+    write('La ruta más rápida es '),write(ROUTE), write(' con una duración de '), write(T),write(' minutos'),nl.
